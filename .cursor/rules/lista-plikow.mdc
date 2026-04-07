@@ -1,0 +1,12 @@
+---
+description: Gdy użytkownik pyta "jakie pliki zmieniłeś?" - listuj tylko pliki zmodyfikowane DZISIAJ
+alwaysApply: true
+---
+
+# Lista zmienionych plików
+
+Gdy użytkownik pyta „jakie pliki zmieniłeś?” (lub podobnie):
+
+1. **Zweryfikuj daty** – użyj `stat` lub `find` i sprawdź, które pliki mają datę modyfikacji = dzisiejsza data
+2. **Listuj tylko pliki zmienione DZISIAJ** – nie zgaduj, nie przypominaj z kontekstu
+3. **Tylko ścieżki plików** – bez komentarzy, bez wyjaśnień, czysta lista

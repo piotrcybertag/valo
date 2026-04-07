@@ -1,0 +1,12 @@
+---
+description: Numer wersji w versions.txt – zwiększ przy każdej zmianie kodu
+alwaysApply: true
+---
+
+# Plik `versions.txt` (root projektu)
+
+- W katalogu głównym projektu istnieje plik **`versions.txt`**.
+- Zawiera **wyłącznie jedną liczbę całkowitą** (np. `42`) — **bez** prefiksów `v`, `ver`, kropek, etykiet.
+- **Przy każdej zmianie kodu** w repozytorium (commit / zakończona edycja zadania) **zwiększ tę liczbę o 1** przed lub w ramach tej samej zmiany.
+- Nie pomijaj tego kroku — wersja w pliku musi odzwierciedlać aktualny stan po zmianach.
+- Wyświetlanie w UI czyta wyłącznie ten plik (np. przez `AppServiceProvider` / widok).
