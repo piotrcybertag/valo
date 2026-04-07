@@ -72,6 +72,90 @@ class RaportPLController extends Controller
 
     private const KATEGORIE_PER_GRUPA = ['Sales (income)', 'CoS', 'Margin1', 'Direct'];
 
+    /** Plan, narastająco i wszystkie kolumny miesięczne ≈ 0 (null plan lub 0 liczy się jako „puste”). */
+    private static function raportPlKolumnyWszystkieZera(array $w, int $miesiac): bool
+    {
+        $eps = 1e-6;
+        $z = static fn ($x): bool => $x === null || abs((float) $x) < $eps;
+        $typ = $w['typ'] ?? '';
+
+        if ($typ === 'naglowek_grupy') {
+            $plan = $w['oper_result_plan'] ?? null;
+            $nar = (float) ($w['oper_result_narastajaco'] ?? 0);
+            $wm = $w['wartosci_miesieczne'] ?? [];
+        } elseif ($typ === 'podsumowanie_sales' || $typ === 'podsumowanie_oper_result') {
+            $plan = $w['plan'] ?? null;
+            $nar = (float) ($w['narastajaco'] ?? 0);
+            $wm = $w['wartosci_miesieczne'] ?? [];
+        } else {
+            $plan = $w['plan'] ?? null;
+            $nar = (float) ($w['narastajaco'] ?? 0);
+            $wm = $w['wartosci_miesieczne'] ?? [];
+        }
+
+        if (! $z($plan) || ! $z($nar)) {
+            return false;
+        }
+        for ($m = 1; $m <= $miesiac; $m++) {
+            if (! $z($wm[$m] ?? null)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Ukrywa wiersze z samymi zerami. Dla bloku grupy: usuwa nagłówek tylko gdy nagłówek i wszystkie wiersze szczegółów są zerowe.
+     */
+    private static function raportPlFiltrujWierszeZerowe(array $wiersze, int $miesiac): array
+    {
+        $out = [];
+        $i = 0;
+        $n = count($wiersze);
+        while ($i < $n) {
+            $w = $wiersze[$i];
+            $typ = $w['typ'] ?? '';
+
+            if ($typ === 'naglowek_grupy') {
+                $gidx = $w['grupa_idx'] ?? -1;
+                $j = $i + 1;
+                while ($j < $n
+                    && ($wiersze[$j]['typ'] ?? '') === 'wiersz'
+                    && ($wiersze[$j]['grupa_idx'] ?? -999) === $gidx) {
+                    $j++;
+                }
+
+                $headZero = self::raportPlKolumnyWszystkieZera($w, $miesiac);
+                $keptChildren = [];
+                for ($k = $i + 1; $k < $j; $k++) {
+                    if (! self::raportPlKolumnyWszystkieZera($wiersze[$k], $miesiac)) {
+                        $keptChildren[] = $wiersze[$k];
+                    }
+                }
+
+                if ($headZero && $keptChildren === []) {
+                    // cała grupa zerowa — brak wierszy
+                } else {
+                    $out[] = $wiersze[$i];
+                    foreach ($keptChildren as $row) {
+                        $out[] = $row;
+                    }
+                }
+                $i = $j;
+
+                continue;
+            }
+
+            if (! self::raportPlKolumnyWszystkieZera($w, $miesiac)) {
+                $out[] = $w;
+            }
+            $i++;
+        }
+
+        return $out;
+    }
+
     /** Agreguje dane importu i zwraca wartości biezacy per grupa/kategoria. */
     private static function agregujBiezacy($dane, $planKont, array $kolejnoscGrup): array
     {
@@ -589,6 +673,8 @@ class RaportPLController extends Controller
             'pozycje' => null,
             'wartosci_miesieczne' => $wartosciMiesieczneIncomeAdjusted,
         ];
+
+        $wiersze = self::raportPlFiltrujWierszeZerowe($wiersze, $miesiac);
 
         $imports = Import::withCount('dane')->orderByDesc('created_at')->get();
 
