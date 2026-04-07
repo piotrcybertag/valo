@@ -1,0 +1,175 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      server_version:
+        description: 'Wersja na serwerze (np. 5)'
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      # actions/checkout bywa bez tagów mimo pełnej historii — bez tego rev-parse v15
+      # kończy się fałszywym „brak tagu” i cichym pełnym deployem (git ls-files).
+      - name: Fetch tags from origin
+        run: git fetch origin --prune --tags --force
+
+      - name: Install lftp
+        run: sudo apt-get update && sudo apt-get install -y lftp
+
+      - name: Get current version
+        id: current_version
+        run: |
+          CURRENT_VERSION=$(cat versions.txt | tr -d ' \t\r\n')
+          echo "version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+          echo "Current version: $CURRENT_VERSION"
+
+      - name: Get server version
+        id: server_version
+        run: |
+          SERVER_VERSION="${{ inputs.server_version }}"
+          echo "server_version=$SERVER_VERSION" >> $GITHUB_OUTPUT
+          echo "Server version: $SERVER_VERSION"
+
+      - name: Find changed files
+        id: changed_files
+        run: |
+          SERVER_VERSION="${{ inputs.server_version }}"
+          CURRENT_VERSION="${{ steps.current_version.outputs.version }}"
+
+          if [ "$SERVER_VERSION" = "0" ] || [ -z "$SERVER_VERSION" ]; then
+            echo "No previous version found, deploying all tracked files"
+            git ls-files > changed_files.txt
+          else
+            echo "Finding files changed since version $SERVER_VERSION"
+            # Tag może być "11" lub "v11" — sprawdzamy obie formy
+            SERVER_TAG=""
+            if git rev-parse "v$SERVER_VERSION" >/dev/null 2>&1; then
+              SERVER_TAG="v$SERVER_VERSION"
+            elif git rev-parse "$SERVER_VERSION" >/dev/null 2>&1; then
+              SERVER_TAG="$SERVER_VERSION"
+            fi
+
+            if [ -n "$SERVER_TAG" ]; then
+              echo "Comparing with tag: $SERVER_TAG"
+              git diff --name-only "$SERVER_TAG" HEAD > changed_files.txt
+            else
+              echo "Tag v$SERVER_VERSION ani $SERVER_VERSION nie znaleziony po fetch --tags, szukam commita „Wersja $SERVER_VERSION” (stary format)"
+              COMMIT=$(git log --all --grep="Wersja $SERVER_VERSION" --format="%H" | head -1)
+              if [ -n "$COMMIT" ]; then
+                echo "Found commit: $COMMIT"
+                git diff --name-only "$COMMIT" HEAD > changed_files.txt
+              else
+                echo "::error::Brak tagu v$SERVER_VERSION (i $SERVER_VERSION) oraz commita z tytułem „Wersja $SERVER_VERSION”. Na runnerze nie da się ustalić bazy do diff — pełny deploy tylko przy server_version=0."
+                exit 1
+              fi
+            fi
+          fi
+
+          # Filtruj: wyklucz .env, .github, vendor, node_modules
+          > filtered_files.txt
+          while IFS= read -r file; do
+            if [ -f "$file" ] && \
+               [[ "$file" != ".env" ]] && [[ "$file" != *"/.env" ]] && \
+               [[ "$file" != ".github/"* ]] && \
+               [[ "$file" != "vendor/"* ]] && \
+               [[ "$file" != "node_modules/"* ]]; then
+              echo "$file" >> filtered_files.txt
+            fi
+          done < changed_files.txt
+
+          if [ -s filtered_files.txt ]; then
+            echo "Files to deploy:"
+            cat filtered_files.txt
+            FILE_COUNT=$(wc -l < filtered_files.txt)
+            echo "Total files: $FILE_COUNT"
+          else
+            echo "No files to deploy"
+          fi
+
+      - name: Deploy changed files via FTP
+        env:
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          if [ ! -s filtered_files.txt ]; then
+            echo "No files to deploy"
+            exit 0
+          fi
+
+          WORKSPACE=$(pwd)
+          FTP_HOST="${{ secrets.FTP_HOST }}"
+          FTP_USER="${{ secrets.FTP_USER }}"
+          FTP_REMOTE="${{ secrets.FTP_REMOTE_PATH }}"
+
+          if [ -z "$FTP_HOST" ] || [ -z "$FTP_USER" ] || [ -z "$FTP_REMOTE" ]; then
+            echo "::error::Set secrets: FTP_HOST, FTP_USER, FTP_PASSWORD, FTP_REMOTE_PATH"
+            exit 1
+          fi
+
+          {
+            echo "set ftp:ssl-allow no"
+            echo "set ftp:passive-mode yes"
+            echo "set ftp:auto-passive-mode yes"
+            echo "set ftp:list-options -a"
+            echo "set ssl:verify-certificate no"
+            echo "open -u $FTP_USER,\"$FTP_PASSWORD\" -p 21 $FTP_HOST"
+            echo "cd $FTP_REMOTE"
+            echo "lcd $WORKSPACE"
+
+            while IFS= read -r file; do
+              if [ -f "$file" ]; then
+                DIR=$(dirname "$file")
+                if [ "$DIR" != "." ]; then
+                  echo "mkdir -p $DIR"
+                fi
+                echo "put $file -o $file"
+              fi
+            done < filtered_files.txt
+
+            echo "quit"
+          } > deploy_files.lftp
+
+          FILE_COUNT=$(wc -l < filtered_files.txt)
+          echo "Deploying $FILE_COUNT files..."
+          lftp -f deploy_files.lftp
+
+      - name: Update versions.txt on server
+        env:
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+        run: |
+          FTP_HOST="${{ secrets.FTP_HOST }}"
+          FTP_USER="${{ secrets.FTP_USER }}"
+          FTP_REMOTE="${{ secrets.FTP_REMOTE_PATH }}"
+          lftp -c "
+          set ftp:ssl-allow no
+          set ftp:passive-mode yes
+          set ftp:auto-passive-mode yes
+          open -u $FTP_USER,'$FTP_PASSWORD' -p 21 $FTP_HOST
+          cd $FTP_REMOTE
+          put versions.txt
+          quit
+          "
+
+      - name: Deployment summary
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Current Version:** ${{ steps.current_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Previous Server Version:** ${{ inputs.server_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Files Deployed:**" >> $GITHUB_STEP_SUMMARY
+          if [ -f filtered_files.txt ] && [ -s filtered_files.txt ]; then
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat filtered_files.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No files were deployed (no changes detected)" >> $GITHUB_STEP_SUMMARY
+          fi
