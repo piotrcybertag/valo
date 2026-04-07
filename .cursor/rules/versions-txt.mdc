@@ -1,12 +1,12 @@
 ---
-description: Plik versions.txt – format i kiedy zmieniać numer
+description: Plik versions.txt – format i obowiązkowe podbicie przy zmianie kodu
 alwaysApply: true
 ---
 
 # Plik `versions.txt` (root projektu)
 
 - Zawiera **wyłącznie jedną liczbę całkowitą** (np. `42`) — **bez** prefiksów `v`, `ver`, kropek, etykiet.
-- **Nie zwiększaj** ani nie edytuj `versions.txt` automatycznie przy zwykłej pracy nad kodem.
-- **Zwiększ liczbę o 1 (lub zmień ją)** tylko gdy użytkownik **wyraźnie poprosi** (np. „podbij wersję”, „wersja +1”) albo gdy sam zleca zmianę numeru wersji w tej samej wiadomości.
-- **Nie rób commita Gita** tylko dlatego, że zmienił się `versions.txt`** — commity wyłącznie na wyraźne polecenie użytkownika (patrz reguła dot. „commit”).
+- **ZAWSZE**, gdy w ramach zadania **zmieniasz kod projektu** (PHP, Blade, trasy, konfiguracja, migracje, assety frontu, workflow w `.github`, itd.) — **po zakończeniu tych edycji** (w tej samej turze) **zwiększ liczbę w `versions.txt` o 1** (jedno podbicie na jedno zrealizowane zadanie z edycją kodu, nie osobno na każdy plik).
+- Wyjątek: **sam** commit / push / dyskusja **bez** edycji plików — nie ruszaj `versions.txt`.
+- **`git commit` / `push` / `tag` nie wykonuj** automatycznie po podbiciu wersji — wyłącznie na **wyraźne polecenie** użytkownika (np. napisze **„commit”**; patrz osobna reguła Git).
 - Wyświetlanie w UI czyta ten plik (np. `AppServiceProvider` / widok).

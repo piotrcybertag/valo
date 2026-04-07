@@ -1,18 +1,20 @@
 ---
-description: Polecenie „commit” → commit lokalny, push, tag = numer z versions.txt
+description: Commit i push z tagiem — tylko na wyraźne polecenie (np. „commit”)
 alwaysApply: true
 ---
 
-# Git: commit i push z tagiem wersji
+# Git: kiedy commitować
 
-Gdy użytkownik napisze **„commit”** albo **wyraźnie poprosi** o commit (i push) do repozytorium:
+- **`git commit`, `git push`, `git tag`** — **tylko** gdy użytkownik **wyraźnie** poprosi, w szczególności gdy napisze **„commit”** (lub jednoznacznie: „zrób commit”, „wypchnij na github” w sensie pełnego release’u z repozytoriem — jeśli tylko workflow bez słowa commit, doprecyzuj; domyślnie traktuj **„commit”** jako sygnał do commit + push + tag).
 
-1. Odczytaj aktualny numer z **`versions.txt`** (trim, tylko cyfry — patrz reguła `versions.txt`).
-2. **`git status`** — sprawdź zmiany; **`git add`** odpowiednie pliki.
-3. **`git commit -m "..."`** — zwięzły, sensowny opis zmian (po polsku lub jak w projekcie).
-4. **`git push`** (aktywny branch, np. `main`).
-5. **Tag:** utwórz lekki tag o nazwie **dokładnie tej liczbie** co w `versions.txt` (np. `42`, **bez** `v`).  
-   - Przykład: `git tag TAG` potem `git push origin TAG`.  
-   - Jeśli tag o tej nazwie **już istnieje**, **nie nadpisuj** (`-f`) bez wyraźnej prośby użytkownika — zamiast tego poinformuj: trzeba podbić `versions.txt` albo uzgodnić tag.
+# Gdy użytkownik wyraźnie każe zacommitować (np. „commit”)
 
-**Poza** sytuacją z p. 1–5: **nie wykonuj** `git commit` / `git push` / `git tag` samodzielnie po zwykłych zmianach w kodzie.
+1. Odczytaj numer z **`versions.txt`** (trim, tylko cyfry).
+2. **`git status`** — **`git add`** zmiany do commita.
+3. **`git commit -m "..."`** — sensowny opis.
+4. **`git push`** (np. `main`).
+5. **Tag:** lekki tag o nazwie **dokładnie** jak liczba w `versions.txt` (**bez** `v`).  
+   - `git tag N` → `git push origin N`.  
+   - Jeśli tag **już istnieje** — **bez `-f`**; napisz, że najpierw trzeba podbić `versions.txt` (nowa turka z kodem) albo uzgodnić nadpisanie tagu.
+
+**Między poleceniami:** po zmianach kodu masz zaktualizowany `versions.txt`, ale **bez** commita — do czasu wyraźnego **„commit”**.
