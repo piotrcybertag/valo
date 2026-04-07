@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       server_version:
-        description: 'Wersja na serwerze (np. 5)'
+        description: 'Wersja na serwerze (np. 5). Wpisz 0 = pełny deploy wszystkich śledzonych plików (bez katalogu vendor).'
         required: true
         type: string
 
@@ -48,8 +48,15 @@ jobs:
           CURRENT_VERSION="${{ steps.current_version.outputs.version }}"
 
           if [ "$SERVER_VERSION" = "0" ] || [ -z "$SERVER_VERSION" ]; then
-            echo "No previous version found, deploying all tracked files"
-            git ls-files > changed_files.txt
+            echo "Wersja serwera 0: pełny deployment — wszystkie śledzone pliki poza katalogiem vendor (dalej filtr: .env, .github, node_modules)."
+            git ls-files | grep -v '^vendor/' > changed_files.txt
+            if [ ! -s changed_files.txt ] && [ -z "$(git ls-files)" ]; then
+              echo "::error::Brak śledzonych plików w repozytorium."
+              exit 1
+            fi
+            if [ ! -s changed_files.txt ]; then
+              echo "::warning::Lista plików pusta po wykluczeniu vendor/ — brak wdrożeń (albo cały projekt siedzi tylko w vendor/)."
+            fi
           else
             echo "Finding files changed since version $SERVER_VERSION"
             # Tag może być "11" lub "v11" — sprawdzamy obie formy
