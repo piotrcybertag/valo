@@ -1,0 +1,18 @@
+---
+description: Polecenie „commit” → commit lokalny, push, tag = numer z versions.txt
+alwaysApply: true
+---
+
+# Git: commit i push z tagiem wersji
+
+Gdy użytkownik napisze **„commit”** albo **wyraźnie poprosi** o commit (i push) do repozytorium:
+
+1. Odczytaj aktualny numer z **`versions.txt`** (trim, tylko cyfry — patrz reguła `versions.txt`).
+2. **`git status`** — sprawdź zmiany; **`git add`** odpowiednie pliki.
+3. **`git commit -m "..."`** — zwięzły, sensowny opis zmian (po polsku lub jak w projekcie).
+4. **`git push`** (aktywny branch, np. `main`).
+5. **Tag:** utwórz lekki tag o nazwie **dokładnie tej liczbie** co w `versions.txt` (np. `42`, **bez** `v`).  
+   - Przykład: `git tag TAG` potem `git push origin TAG`.  
+   - Jeśli tag o tej nazwie **już istnieje**, **nie nadpisuj** (`-f`) bez wyraźnej prośby użytkownika — zamiast tego poinformuj: trzeba podbić `versions.txt` albo uzgodnić tag.
+
+**Poza** sytuacją z p. 1–5: **nie wykonuj** `git commit` / `git push` / `git tag` samodzielnie po zwykłych zmianach w kodzie.

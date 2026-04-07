@@ -1,12 +1,12 @@
 ---
-description: Numer wersji w versions.txt – zwiększ przy każdej zmianie kodu
+description: Plik versions.txt – format i kiedy zmieniać numer
 alwaysApply: true
 ---
 
 # Plik `versions.txt` (root projektu)
 
-- W katalogu głównym projektu istnieje plik **`versions.txt`**.
 - Zawiera **wyłącznie jedną liczbę całkowitą** (np. `42`) — **bez** prefiksów `v`, `ver`, kropek, etykiet.
-- **Przy każdej zmianie kodu** w repozytorium (commit / zakończona edycja zadania) **zwiększ tę liczbę o 1** przed lub w ramach tej samej zmiany.
-- Nie pomijaj tego kroku — wersja w pliku musi odzwierciedlać aktualny stan po zmianach.
-- Wyświetlanie w UI czyta wyłącznie ten plik (np. przez `AppServiceProvider` / widok).
+- **Nie zwiększaj** ani nie edytuj `versions.txt` automatycznie przy zwykłej pracy nad kodem.
+- **Zwiększ liczbę o 1 (lub zmień ją)** tylko gdy użytkownik **wyraźnie poprosi** (np. „podbij wersję”, „wersja +1”) albo gdy sam zleca zmianę numeru wersji w tej samej wiadomości.
+- **Nie rób commita Gita** tylko dlatego, że zmienił się `versions.txt`** — commity wyłącznie na wyraźne polecenie użytkownika (patrz reguła dot. „commit”).
+- Wyświetlanie w UI czyta ten plik (np. `AppServiceProvider` / widok).
