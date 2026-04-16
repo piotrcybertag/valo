@@ -27,29 +27,12 @@
         </div>
     @endif
 
-    @if(session('import_exists') && session('import_replacement_pending'))
-    @php
-        $existing = session('import_exists');
-    @endphp
-    <div class="alert-warning mb-4">
-        <p class="font-medium mb-2">Import za {{ $existing['okres_nazwa'] ?? '—' }} już istnieje.</p>
-        <p class="text-sm mb-3">Obecny import: {{ $existing['created_at'] ?? '—' }}, {{ $existing['dane_count'] ?? 0 }} wierszy.</p>
-        <p class="text-sm mb-4">Czy chcesz ponownie zaimportować dane za ten okres? Istniejący import zostanie zastąpiony w bazie danych.</p>
-        <form action="{{ route('import.dane.zastap') }}" method="post" class="inline">
-            @csrf
-            <input type="hidden" name="potwierdz" value="1">
-            <button type="submit" class="btn btn-primary">Tak, zastąp import</button>
-        </form>
-        <a href="{{ route('import.dane.zastap-anuluj') }}" class="btn btn-outline" style="margin-left:0.5rem">Anuluj</a>
-    </div>
-    @endif
-
     @if(session('missing_konta'))
     <div class="alert-warning mb-4">
         <p class="font-medium mb-2">Następujące konta z pliku importu nie występują w planie kont:</p>
         @php $brakujace = session('missing_konta'); @endphp
         <p class="text-sm mb-3">{{ count($brakujace) > 50 ? implode(', ', array_slice($brakujace, 0, 50)) . '... oraz ' . (count($brakujace) - 50) . ' innych' : implode(', ', $brakujace) }}</p>
-        <p class="text-sm mb-4">Czy mimo to zaimportować dane?</p>
+        <p class="text-sm mb-4">Czy mimo to zaimportować dane? (Brakujące konta zostaną dopisane do planu kont z nazwami z pliku, jeśli były w sesji podglądu.)</p>
         <form action="{{ route('import.dane.potwierdz') }}" method="post" class="inline">
             @csrf
             <input type="hidden" name="potwierdz" value="1">
@@ -67,6 +50,7 @@
                     <th>Okres (rok / miesiąc)</th>
                     <th>Data importu</th>
                     <th>Plik</th>
+                    <th>Niezadekretowane</th>
                     <th>Liczba wierszy</th>
                     <th class="col-actions">Akcje</th>
                 </tr>
@@ -77,6 +61,7 @@
                     <td>{{ $imp->okres_nazwa ?? '—' }}</td>
                     <td>{{ $imp->created_at->format('Y-m-d H:i') }}</td>
                     <td>{{ $imp->nazwa_pliku ?? '—' }}</td>
+                    <td class="text-right whitespace-nowrap">{{ $imp->niezadekretowane !== null ? number_format((float) $imp->niezadekretowane, 2, ',', ' ') : '—' }}</td>
                     <td>{{ $imp->dane_count }}</td>
                     <td class="col-actions">
                         <a href="{{ route('raport-pl.show', $imp) }}" class="btn-icon" title="Podejrzyj">

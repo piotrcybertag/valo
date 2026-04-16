@@ -73,7 +73,7 @@ class RaportPLController extends Controller
     private const KATEGORIE_PER_GRUPA = ['Sales (income)', 'CoS', 'Margin1', 'Direct'];
 
     /** Plan, narastająco i wszystkie kolumny miesięczne ≈ 0 (null plan lub 0 liczy się jako „puste”). */
-    private static function raportPlKolumnyWszystkieZera(array $w, int $miesiac): bool
+    private static function raportPlKolumnyWszystkieZera(array $w): bool
     {
         $eps = 1e-6;
         $z = static fn ($x): bool => $x === null || abs((float) $x) < $eps;
@@ -82,33 +82,24 @@ class RaportPLController extends Controller
         if ($typ === 'naglowek_grupy') {
             $plan = $w['oper_result_plan'] ?? null;
             $nar = (float) ($w['oper_result_narastajaco'] ?? 0);
-            $wm = $w['wartosci_miesieczne'] ?? [];
+            $biez = (float) ($w['oper_result_biezacy'] ?? 0);
         } elseif ($typ === 'podsumowanie_sales' || $typ === 'podsumowanie_oper_result') {
             $plan = $w['plan'] ?? null;
             $nar = (float) ($w['narastajaco'] ?? 0);
-            $wm = $w['wartosci_miesieczne'] ?? [];
+            $biez = (float) ($w['biezacy'] ?? 0);
         } else {
             $plan = $w['plan'] ?? null;
             $nar = (float) ($w['narastajaco'] ?? 0);
-            $wm = $w['wartosci_miesieczne'] ?? [];
+            $biez = (float) ($w['biezacy'] ?? 0);
         }
 
-        if (! $z($plan) || ! $z($nar)) {
-            return false;
-        }
-        for ($m = 1; $m <= $miesiac; $m++) {
-            if (! $z($wm[$m] ?? null)) {
-                return false;
-            }
-        }
-
-        return true;
+        return $z($plan) && $z($nar) && $z($biez);
     }
 
     /**
      * Ukrywa wiersze z samymi zerami. Dla bloku grupy: usuwa nagłówek tylko gdy nagłówek i wszystkie wiersze szczegółów są zerowe.
      */
-    private static function raportPlFiltrujWierszeZerowe(array $wiersze, int $miesiac): array
+    private static function raportPlFiltrujWierszeZerowe(array $wiersze): array
     {
         $out = [];
         $i = 0;
@@ -126,10 +117,10 @@ class RaportPLController extends Controller
                     $j++;
                 }
 
-                $headZero = self::raportPlKolumnyWszystkieZera($w, $miesiac);
+                $headZero = self::raportPlKolumnyWszystkieZera($w);
                 $keptChildren = [];
                 for ($k = $i + 1; $k < $j; $k++) {
-                    if (! self::raportPlKolumnyWszystkieZera($wiersze[$k], $miesiac)) {
+                    if (! self::raportPlKolumnyWszystkieZera($wiersze[$k])) {
                         $keptChildren[] = $wiersze[$k];
                     }
                 }
@@ -147,7 +138,7 @@ class RaportPLController extends Controller
                 continue;
             }
 
-            if (! self::raportPlKolumnyWszystkieZera($w, $miesiac)) {
+            if (! self::raportPlKolumnyWszystkieZera($w)) {
                 $out[] = $w;
             }
             $i++;
@@ -156,103 +147,14 @@ class RaportPLController extends Controller
         return $out;
     }
 
-    /** Agreguje dane importu i zwraca wartości biezacy per grupa/kategoria. */
-    private static function agregujBiezacy($dane, $planKont, array $kolejnoscGrup): array
+    /** Uzupełnia pozycjom szczegółowym kolumnę „poprzednie okresy” = narastająco − bieżący. */
+    private static function raportPlPozycjeZPoprzednimi(array $pozycje): array
     {
-        $sumy = ['Indirect' => 0.0, 'Financial' => 0.0];
-        $directOgolne = 0.0;
-        $grupy = [];
-        foreach ($kolejnoscGrup as $g) {
-            $grupy[$g] = ['Sales (income)' => 0.0, 'CoS' => 0.0, 'Direct' => 0.0];
-        }
+        return array_map(static function (array $p): array {
+            $p['poprzednie_okresy'] = (float) ($p['narastajaco'] ?? 0) - (float) ($p['biezacy'] ?? 0);
 
-        foreach ($dane as $row) {
-            $pk = $planKont->get($row->nr);
-            $grupa = $pk ? ($pk->grupa ?? '') : '';
-            $rodzaj = $pk ? ($pk->rodzaj_pozycji ?? '') : '';
-            $kat = self::kategoria((string) $rodzaj);
-            if ($kat === null) {
-                continue;
-            }
-
-            $ma4 = (float) ($row->ma4 ?? 0);
-            $wn4 = (float) ($row->wn4 ?? 0);
-            $ma5 = (float) ($row->ma5 ?? 0);
-            $wn5 = (float) ($row->wn5 ?? 0);
-
-            if ($kat === 'Indirect' || $kat === 'Financial') {
-                if ($kat === 'Indirect') {
-                    $sumy['Indirect'] += $wn4;
-                } else {
-                    $sumy['Financial'] += $ma4 - $wn4;
-                }
-                continue;
-            }
-
-            if (! isset($grupy[$grupa])) {
-                $grupy[$grupa] = ['Sales (income)' => 0.0, 'CoS' => 0.0, 'Direct' => 0.0];
-            }
-
-            if ($kat === 'Sales (income)') {
-                $grupy[$grupa]['Sales (income)'] += $ma4;
-            } elseif ($kat === 'CoS') {
-                $grupy[$grupa]['CoS'] += $wn4;
-            } else {
-                if ($grupa === '') {
-                    $directOgolne += $wn4;
-                } else {
-                    $grupy[$grupa]['Direct'] += $wn4;
-                }
-            }
-        }
-
-        $sumSales = 0.0;
-        $sumOperResult = 0.0;
-        foreach ($kolejnoscGrup as $g) {
-            $sb = $grupy[$g] ?? ['Sales (income)' => 0, 'CoS' => 0, 'Direct' => 0];
-            $sumSales += $sb['Sales (income)'];
-            $margin1 = $sb['Sales (income)'] - $sb['CoS'];
-            $operResult = $margin1 - $sb['Direct'];
-            $sumOperResult += $operResult;
-        }
-        $sumOperResult -= $directOgolne;
-        $ebit = $sumOperResult - $sumy['Indirect'];
-        $income = $ebit - $sumy['Financial'];
-
-        return [
-            'sumSales' => $sumSales,
-            'sumOperResult' => $sumOperResult,
-            'grupy' => $grupy,
-            'directOgolne' => $directOgolne,
-            'indirect' => $sumy['Indirect'],
-            'financial' => $sumy['Financial'],
-            'ebit' => $ebit,
-            'income' => $income,
-        ];
-    }
-
-    /** Zwraca per-konto wartości biezacy z importu: [nr => value]. */
-    private static function pozycjePerMiesiac($dane, $planKont): array
-    {
-        $out = [];
-        foreach ($dane as $row) {
-            $pk = $planKont->get($row->nr);
-            $rodzaj = $pk ? ($pk->rodzaj_pozycji ?? '') : '';
-            $kat = self::kategoria((string) $rodzaj);
-            if ($kat === null) {
-                continue;
-            }
-            $ma4 = (float) ($row->ma4 ?? 0);
-            $wn4 = (float) ($row->wn4 ?? 0);
-            $val = match ($kat) {
-                'Sales (income)' => $ma4,
-                'Indirect' => $wn4,
-                'Financial' => $ma4 - $wn4,
-                default => $wn4,
-            };
-            $out[$row->nr] = $val;
-        }
-        return $out;
+            return $p;
+        }, $pozycje);
     }
 
     public function show(Import $import)
@@ -270,6 +172,8 @@ class RaportPLController extends Controller
         $sumyGrupaBiezacy = [];
         $sumyGrupaNarastajaco = [];
         $pozycjeSales = [];
+        $pozycjeCoS = [];
+        $pozycjeDirect = [];
         $kolejnoscGrup = [];
 
         foreach ($import->dane as $row) {
@@ -281,24 +185,24 @@ class RaportPLController extends Controller
                 continue;
             }
 
-            $ma4 = (float) ($row->ma4 ?? 0);
-            $wn4 = (float) ($row->wn4 ?? 0);
-            $ma5 = (float) ($row->ma5 ?? 0);
-            $wn5 = (float) ($row->wn5 ?? 0);
+            $ma2 = (float) ($row->ma2 ?? 0);
+            $wn2 = (float) ($row->wn2 ?? 0);
+            $ma3 = (float) ($row->ma3 ?? 0);
+            $wn3 = (float) ($row->wn3 ?? 0);
 
             if ($kat === 'Indirect' || $kat === 'Financial') {
                 if ($kat === 'Indirect') {
-                    $sumyBiezacy['Indirect'] += $wn4;
-                    $sumyNarastajaco['Indirect'] += $wn5;
+                    $sumyBiezacy['Indirect'] += $wn2;
+                    $sumyNarastajaco['Indirect'] += $wn3;
                     $pozycjeIndirect[] = [
                         'nr' => $row->nr,
                         'nazwa' => $pk ? ($pk->nazwa ?? '') : '',
-                        'biezacy' => $wn4,
-                        'narastajaco' => $wn5,
+                        'biezacy' => $wn2,
+                        'narastajaco' => $wn3,
                     ];
                 } else {
-                    $valB = $ma4 - $wn4;
-                    $valN = $ma5 - $wn5;
+                    $valB = $ma2 - $wn2;
+                    $valN = $ma3 - $wn3;
                     $sumyBiezacy['Financial'] += $valB;
                     $sumyNarastajaco['Financial'] += $valN;
                     $pozycjeFinancial[] = [
@@ -325,41 +229,41 @@ class RaportPLController extends Controller
             }
 
             if ($kat === 'Sales (income)') {
-                $sumyGrupaBiezacy[$grupa]['Sales (income)'] += $ma4;
-                $sumyGrupaNarastajaco[$grupa]['Sales (income)'] += $ma5;
+                $sumyGrupaBiezacy[$grupa]['Sales (income)'] += $ma2;
+                $sumyGrupaNarastajaco[$grupa]['Sales (income)'] += $ma3;
                 $pozycjeSales[$grupa][] = [
                     'nr' => $row->nr,
                     'nazwa' => $pk ? ($pk->nazwa ?? '') : '',
-                    'biezacy' => $ma4,
-                    'narastajaco' => $ma5,
+                    'biezacy' => $ma2,
+                    'narastajaco' => $ma3,
                 ];
             } elseif ($kat === 'CoS') {
-                $sumyGrupaBiezacy[$grupa]['CoS'] += $wn4;
-                $sumyGrupaNarastajaco[$grupa]['CoS'] += $wn5;
+                $sumyGrupaBiezacy[$grupa]['CoS'] += $wn2;
+                $sumyGrupaNarastajaco[$grupa]['CoS'] += $wn3;
                 $pozycjeCoS[$grupa][] = [
                     'nr' => $row->nr,
                     'nazwa' => $pk ? ($pk->nazwa ?? '') : '',
-                    'biezacy' => $wn4,
-                    'narastajaco' => $wn5,
+                    'biezacy' => $wn2,
+                    'narastajaco' => $wn3,
                 ];
             } else {
                 if ($grupa === '') {
-                    $directOgolneBiezacy += $wn4;
-                    $directOgolneNarastajaco += $wn5;
+                    $directOgolneBiezacy += $wn2;
+                    $directOgolneNarastajaco += $wn3;
                     $pozycjeDirectOgolne[] = [
                         'nr' => $row->nr,
                         'nazwa' => $pk ? ($pk->nazwa ?? '') : '',
-                        'biezacy' => $wn4,
-                        'narastajaco' => $wn5,
+                        'biezacy' => $wn2,
+                        'narastajaco' => $wn3,
                     ];
                 } else {
-                    $sumyGrupaBiezacy[$grupa]['Direct'] += $wn4;
-                    $sumyGrupaNarastajaco[$grupa]['Direct'] += $wn5;
+                    $sumyGrupaBiezacy[$grupa]['Direct'] += $wn2;
+                    $sumyGrupaNarastajaco[$grupa]['Direct'] += $wn3;
                     $pozycjeDirect[$grupa][] = [
                         'nr' => $row->nr,
                         'nazwa' => $pk ? ($pk->nazwa ?? '') : '',
-                        'biezacy' => $wn4,
-                        'narastajaco' => $wn5,
+                        'biezacy' => $wn2,
+                        'narastajaco' => $wn3,
                     ];
                 }
             }
@@ -385,78 +289,26 @@ class RaportPLController extends Controller
         $rok = $import->data_okresu ? (int) $import->data_okresu->format('Y') : (int) date('Y');
         $miesiac = $import->data_okresu ? (int) $import->data_okresu->format('n') : 12;
 
-        $wipPerMiesiac = [];
-        for ($wm = 1; $wm <= $miesiac; $wm++) {
-            $wipPerMiesiac[$wm] = (float) Wip::query()
-                ->where('rok', $rok)
-                ->where('miesiac', $wm)
-                ->sum('wartosc');
-        }
-        $wipNarastajaco = array_sum($wipPerMiesiac);
-
-        $daneMiesieczne = [];
-        $impGrudzien = Import::whereYear('data_okresu', $rok - 1)
-            ->whereMonth('data_okresu', 12)
-            ->with('dane')
-            ->first();
-        $daneMiesiecznePozycje = [];
-        if ($impGrudzien) {
-            $daneMiesieczne[0] = self::agregujBiezacy($impGrudzien->dane, $planKont, $kolejnoscGrup);
-            $daneMiesiecznePozycje[0] = self::pozycjePerMiesiac($impGrudzien->dane, $planKont);
-        }
-        for ($m = 1; $m < $miesiac; $m++) {
-            $imp = Import::whereYear('data_okresu', $rok)
-                ->whereMonth('data_okresu', $m)
-                ->with('dane')
-                ->first();
-            if ($imp) {
-                $daneMiesieczne[$m] = self::agregujBiezacy($imp->dane, $planKont, $kolejnoscGrup);
-                $daneMiesiecznePozycje[$m] = self::pozycjePerMiesiac($imp->dane, $planKont);
-            }
-        }
-        $daneMiesieczne[$miesiac] = self::agregujBiezacy($import->dane, $planKont, $kolejnoscGrup);
-        $daneMiesiecznePozycje[$miesiac] = self::pozycjePerMiesiac($import->dane, $planKont);
-
-        $roznica = static function (array $dane, callable $getVal): array {
-            $out = [];
-            foreach ($dane as $m => $dm) {
-                if ($m === 0) {
-                    continue;
-                }
-                $prev = $dane[$m - 1] ?? null;
-                $out[$m] = $getVal($dm) - ($prev ? $getVal($prev) : 0);
-            }
-            return $out;
-        };
-
-        $enrichPozycje = static function (array $pozycje, array $daneMiesiecznePozycje, int $miesiac): array {
-            return array_map(function ($p) use ($daneMiesiecznePozycje, $miesiac) {
-                $nr = $p['nr'];
-                $wm = [];
-                for ($m = 1; $m <= $miesiac; $m++) {
-                    $curr = $daneMiesiecznePozycje[$m][$nr] ?? 0;
-                    $prev = $daneMiesiecznePozycje[$m - 1][$nr] ?? 0;
-                    $wm[$m] = $curr - $prev;
-                }
-                $p['wartosci_miesieczne'] = $wm;
-                return $p;
-            }, $pozycje);
-        };
+        // WIP tylko za miesiąc okresu importu (nie suma YTD z poprzednich miesięcy).
+        $wipMiesiacaRaportu = (float) Wip::query()
+            ->where('rok', $rok)
+            ->where('miesiac', $miesiac)
+            ->sum('wartosc');
 
         foreach ($kolejnoscGrup as $g) {
             if (isset($pozycjeSales[$g])) {
-                $pozycjeSales[$g] = $enrichPozycje($pozycjeSales[$g], $daneMiesiecznePozycje, $miesiac);
+                $pozycjeSales[$g] = self::raportPlPozycjeZPoprzednimi($pozycjeSales[$g]);
             }
             if (isset($pozycjeCoS[$g])) {
-                $pozycjeCoS[$g] = $enrichPozycje($pozycjeCoS[$g], $daneMiesiecznePozycje, $miesiac);
+                $pozycjeCoS[$g] = self::raportPlPozycjeZPoprzednimi($pozycjeCoS[$g]);
             }
             if (isset($pozycjeDirect[$g])) {
-                $pozycjeDirect[$g] = $enrichPozycje($pozycjeDirect[$g], $daneMiesiecznePozycje, $miesiac);
+                $pozycjeDirect[$g] = self::raportPlPozycjeZPoprzednimi($pozycjeDirect[$g]);
             }
         }
-        $pozycjeDirectOgolne = $enrichPozycje($pozycjeDirectOgolne, $daneMiesiecznePozycje, $miesiac);
-        $pozycjeIndirect = $enrichPozycje($pozycjeIndirect, $daneMiesiecznePozycje, $miesiac);
-        $pozycjeFinancial = $enrichPozycje($pozycjeFinancial, $daneMiesiecznePozycje, $miesiac);
+        $pozycjeDirectOgolne = self::raportPlPozycjeZPoprzednimi($pozycjeDirectOgolne);
+        $pozycjeIndirect = self::raportPlPozycjeZPoprzednimi($pozycjeIndirect);
+        $pozycjeFinancial = self::raportPlPozycjeZPoprzednimi($pozycjeFinancial);
 
         $planRoczny = PlanRoczny::first();
         $planByGrupaKod = \App\Models\PlanRocznyGrupa::with('grupa')->get()->keyBy(fn ($p) => $p->grupa?->kod ?? '');
@@ -480,7 +332,7 @@ class RaportPLController extends Controller
             'biezacy' => $sumSalesBiezacy,
             'narastajaco' => $sumSalesNarastajaco,
             'plan' => $sumSalesPlan ?: null,
-            'wartosci_miesieczne' => $roznica($daneMiesieczne, fn ($dm) => $dm['sumSales'] ?? 0),
+            'poprzednie_okresy' => $sumSalesNarastajaco - $sumSalesBiezacy,
         ];
 
         $grupaIdx = 0;
@@ -497,16 +349,14 @@ class RaportPLController extends Controller
             $prg = $planByGrupaKod->get($grupa);
             $operResultPlan = $prg ? ((float) ($prg->sales_plan ?? 0)) - ((float) ($prg->cos_plan ?? 0)) - ((float) ($prg->direct_plan ?? 0)) : null;
             $nazwaGrupy = $grupa === '' ? '—' : $grupa;
-            $getOperResult = fn ($dm) => (($dm['grupy'][$grupa]['Sales (income)'] ?? 0) - ($dm['grupy'][$grupa]['CoS'] ?? 0)) - ($dm['grupy'][$grupa]['Direct'] ?? 0);
-            $operResultMiesieczne = $roznica($daneMiesieczne, $getOperResult);
             $wiersze[] = [
                 'typ' => 'naglowek_grupy',
                 'grupa' => $nazwaGrupy,
                 'oper_result_biezacy' => $operResultB,
                 'oper_result_narastajaco' => $operResultN,
                 'oper_result_plan' => $operResultPlan,
+                'oper_result_poprzednie_okresy' => $operResultN - $operResultB,
                 'grupa_idx' => $grupaIdx,
-                'wartosci_miesieczne' => $operResultMiesieczne,
             ];
             $grupaIdx++;
 
@@ -531,20 +381,16 @@ class RaportPLController extends Controller
                     'Direct' => $pozycjeDirect[$grupa] ?? [],
                     default => null,
                 };
-                $getVal = $k === 'Margin1'
-                    ? fn ($dm) => (($dm['grupy'][$grupa]['Sales (income)'] ?? 0) - ($dm['grupy'][$grupa]['CoS'] ?? 0))
-                    : fn ($dm) => $dm['grupy'][$grupa][$k] ?? 0;
-                $wartosciM = $roznica($daneMiesieczne, $getVal);
                 $wiersze[] = [
                     'typ' => 'wiersz',
                     'kategoria' => $k,
                     'biezacy' => $biezacy,
                     'narastajaco' => $narastajaco,
                     'plan' => $planVal,
+                    'poprzednie_okresy' => $narastajaco - $biezacy,
                     'pogrubiony' => in_array($k, self::KATEGORIE_POGRUBIONE, true),
                     'pozycje' => $pozycje,
                     'grupa_idx' => $grupaIdx - 1,
-                    'wartosci_miesieczne' => $wartosciM,
                 ];
             }
         }
@@ -570,9 +416,9 @@ class RaportPLController extends Controller
             'biezacy' => $directOgolneBiezacy,
             'narastajaco' => $directOgolneNarastajaco,
             'plan' => $planRoczny?->direct_ogolne_plan,
+            'poprzednie_okresy' => $directOgolneNarastajaco - $directOgolneBiezacy,
             'pogrubiony' => false,
             'pozycje' => $pozycjeDirectOgolne,
-            'wartosci_miesieczne' => $roznica($daneMiesieczne, fn ($dm) => $dm['directOgolne'] ?? 0),
         ];
         $sumMargin1Biezacy = $sumSalesBiezacy - $sumCoSBiezacy;
         $sumMargin1Narastajaco = $sumSalesNarastajaco - $sumCoSNarastajaco;
@@ -580,17 +426,15 @@ class RaportPLController extends Controller
         $sumDirectTotalNarastajaco = $sumDirectNarastajaco + $directOgolneNarastajaco;
         $sumMargin1Plan = $sumSalesPlan - $sumCoSPlan;
         $sumDirectTotalPlan = $sumDirectPlan + (float) ($planRoczny?->direct_ogolne_plan ?? 0);
-        $getSumMargin1 = fn ($dm) => ($dm['sumSales'] ?? 0) - array_sum(array_map(fn ($g) => $dm['grupy'][$g]['CoS'] ?? 0, $kolejnoscGrup));
-        $getSumDirect = fn ($dm) => array_sum(array_map(fn ($g) => $dm['grupy'][$g]['Direct'] ?? 0, $kolejnoscGrup)) + ($dm['directOgolne'] ?? 0);
         $wiersze[] = [
             'typ' => 'wiersz',
             'kategoria' => 'Margin1 (suma ze wszystkich grup)',
             'biezacy' => $sumMargin1Biezacy,
             'narastajaco' => $sumMargin1Narastajaco,
             'plan' => $sumMargin1Plan,
+            'poprzednie_okresy' => $sumMargin1Narastajaco - $sumMargin1Biezacy,
             'pogrubiony' => true,
             'pozycje' => null,
-            'wartosci_miesieczne' => $roznica($daneMiesieczne, $getSumMargin1),
         ];
         $wiersze[] = [
             'typ' => 'wiersz',
@@ -598,16 +442,16 @@ class RaportPLController extends Controller
             'biezacy' => $sumDirectTotalBiezacy,
             'narastajaco' => $sumDirectTotalNarastajaco,
             'plan' => $sumDirectTotalPlan,
+            'poprzednie_okresy' => $sumDirectTotalNarastajaco - $sumDirectTotalBiezacy,
             'pogrubiony' => true,
             'pozycje' => null,
-            'wartosci_miesieczne' => $roznica($daneMiesieczne, $getSumDirect),
         ];
         $wiersze[] = [
             'typ' => 'podsumowanie_oper_result',
             'biezacy' => $sumOperResultBiezacy,
             'narastajaco' => $sumOperResultNarastajaco,
             'plan' => $sumOperResultPlan ?: null,
-            'wartosci_miesieczne' => $roznica($daneMiesieczne, fn ($dm) => $dm['sumOperResult'] ?? 0),
+            'poprzednie_okresy' => $sumOperResultNarastajaco - $sumOperResultBiezacy,
         ];
         $wiersze[] = [
             'typ' => 'wiersz',
@@ -615,9 +459,9 @@ class RaportPLController extends Controller
             'biezacy' => $sumyBiezacy['Indirect'],
             'narastajaco' => $sumyNarastajaco['Indirect'],
             'plan' => $mapPlan['Indirect'],
+            'poprzednie_okresy' => $sumyNarastajaco['Indirect'] - $sumyBiezacy['Indirect'],
             'pogrubiony' => false,
             'pozycje' => $pozycjeIndirect,
-            'wartosci_miesieczne' => $roznica($daneMiesieczne, fn ($dm) => $dm['indirect'] ?? 0),
         ];
 
         $wiersze[] = [
@@ -626,8 +470,8 @@ class RaportPLController extends Controller
             'biezacy' => $ebitBiezacy,
             'narastajaco' => $ebitNarastajaco,
             'plan' => $mapPlan['EBIT'],
+            'poprzednie_okresy' => $ebitNarastajaco - $ebitBiezacy,
             'pogrubiony' => true,
-            'wartosci_miesieczne' => $roznica($daneMiesieczne, fn ($dm) => $dm['ebit'] ?? 0),
         ];
         $wiersze[] = [
             'typ' => 'wiersz',
@@ -635,9 +479,9 @@ class RaportPLController extends Controller
             'biezacy' => $sumyBiezacy['Financial'],
             'narastajaco' => $sumyNarastajaco['Financial'],
             'plan' => $mapPlan['Financial'],
+            'poprzednie_okresy' => $sumyNarastajaco['Financial'] - $sumyBiezacy['Financial'],
             'pogrubiony' => false,
             'pozycje' => $pozycjeFinancial,
-            'wartosci_miesieczne' => $roznica($daneMiesieczne, fn ($dm) => $dm['financial'] ?? 0),
         ];
         $wiersze[] = [
             'typ' => 'wiersz',
@@ -645,36 +489,49 @@ class RaportPLController extends Controller
             'biezacy' => $incomeBiezacy,
             'narastajaco' => $incomeNarastajaco,
             'plan' => $mapPlan['Income'],
+            'poprzednie_okresy' => $incomeNarastajaco - $incomeBiezacy,
             'pogrubiony' => true,
-            'wartosci_miesieczne' => $roznica($daneMiesieczne, fn ($dm) => $dm['income'] ?? 0),
         ];
 
-        $wartosciMiesieczneIncome = $roznica($daneMiesieczne, fn ($dm) => $dm['income'] ?? 0);
-        $wartosciMiesieczneIncomeAdjusted = [];
-        for ($mi = 1; $mi <= $miesiac; $mi++) {
-            $wartosciMiesieczneIncomeAdjusted[$mi] = ($wartosciMiesieczneIncome[$mi] ?? 0) + ($wipPerMiesiac[$mi] ?? 0);
-        }
+        // Niezadekretowane z importu — jak WIP: ta sama kwota w „bieżący” i „narastająco” (brak rozłożenia na wcześniejsze miesiące w jednym imporcie).
+        // Income Adjusted YTD nadal bez odejmowania ND w YTD (jak dotychczas), żeby nie dublować korekty.
+        $niezadekretowane = (float) ($import->niezadekretowane ?? 0);
+
+        $incomeAdjustedBiezacy = $incomeBiezacy + $wipMiesiacaRaportu - $niezadekretowane;
+        $incomeAdjustedNarastajaco = $incomeNarastajaco + $wipMiesiacaRaportu;
 
         $wiersze[] = [
             'typ' => 'wiersz',
             'kategoria' => 'WIP',
-            'narastajaco' => $wipNarastajaco,
+            'biezacy' => $wipMiesiacaRaportu,
+            'narastajaco' => $wipMiesiacaRaportu,
             'plan' => null,
+            'poprzednie_okresy' => 0.0,
             'pogrubiony' => false,
             'pozycje' => null,
-            'wartosci_miesieczne' => $wipPerMiesiac,
+        ];
+        $wiersze[] = [
+            'typ' => 'wiersz',
+            'kategoria' => 'Niezadekretowane',
+            'biezacy' => $niezadekretowane,
+            'narastajaco' => $niezadekretowane,
+            'plan' => null,
+            'poprzednie_okresy' => 0.0,
+            'pogrubiony' => false,
+            'pozycje' => null,
         ];
         $wiersze[] = [
             'typ' => 'wiersz',
             'kategoria' => 'Income Adjusted',
-            'narastajaco' => $incomeNarastajaco + $wipNarastajaco,
+            'biezacy' => $incomeAdjustedBiezacy,
+            'narastajaco' => $incomeAdjustedNarastajaco,
             'plan' => null,
+            'poprzednie_okresy' => $incomeAdjustedNarastajaco - $incomeAdjustedBiezacy,
             'pogrubiony' => true,
             'pozycje' => null,
-            'wartosci_miesieczne' => $wartosciMiesieczneIncomeAdjusted,
         ];
 
-        $wiersze = self::raportPlFiltrujWierszeZerowe($wiersze, $miesiac);
+        $wiersze = self::raportPlFiltrujWierszeZerowe($wiersze);
 
         $imports = Import::withCount('dane')->orderByDesc('created_at')->get();
 

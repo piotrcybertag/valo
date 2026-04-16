@@ -14,7 +14,8 @@ return [
     |
     */
 
-    'default' => env('MAIL_MAILER', 'log'),
+    // MAIL_MAILER — oficjalna nazwa w Laravel. Alias MAILER / MAIL_DRIVER dla starych wpisów.
+    'default' => env('MAIL_MAILER', env('MAILER', env('MAIL_DRIVER', 'log'))),
 
     /*
     |--------------------------------------------------------------------------

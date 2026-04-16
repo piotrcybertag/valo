@@ -6,10 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 
 class Import extends Model
 {
-    protected $fillable = ['data_okresu', 'nazwa_pliku'];
+    protected $fillable = ['data_okresu', 'nazwa_pliku', 'niezadekretowane'];
 
     protected $casts = [
         'data_okresu' => 'date',
+        'niezadekretowane' => 'decimal:2',
     ];
 
     public function dane()

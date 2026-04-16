@@ -9,7 +9,16 @@ use App\Http\Controllers\PlanRocznyController;
 use App\Http\Controllers\RaportPLController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\WipController;
+use App\Http\Controllers\WipOknoController;
+use App\Http\Controllers\WipRequestController;
 use Illuminate\Support\Facades\Route;
+
+Route::get('/wiprequest.php', [WipRequestController::class, 'show'])->name('wiprequest.show');
+Route::post('/wiprequest.php', [WipRequestController::class, 'store'])->name('wiprequest.store');
+Route::get('/wiprequest', [WipRequestController::class, 'show']);
+Route::post('/wiprequest', [WipRequestController::class, 'store']);
+Route::view('/wiprequest.php/dziekujemy', 'wiprequest.thanks')->name('wiprequest.thanks');
+Route::view('/wiprequest/dziekujemy', 'wiprequest.thanks');
 
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login')->middleware('guest');
 Route::post('/login', [AuthController::class, 'login']);
@@ -28,9 +37,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/ustawienia/import-plan-kont', [ImportController::class, 'importPlanKontForm'])->name('import-plan-kont.index');
     Route::post('/ustawienia/import-plan-kont', [ImportController::class, 'importPlanKont'])->name('import-plan-kont.store');
     Route::post('/import/dane', [ImportController::class, 'importDanych'])->name('import.dane');
+    Route::get('/import/dane/podglad', [ImportController::class, 'importDanychPodglad'])->name('import.dane.podglad');
+    Route::get('/import/dane/anuluj-podglad', [ImportController::class, 'importDanychAnulujPodglad'])->name('import.dane.anuluj-podglad');
+    Route::post('/import/dane/wykonaj', [ImportController::class, 'importDanychWykonaj'])->name('import.dane.wykonaj');
     Route::post('/import/dane/potwierdz', [ImportController::class, 'importDanychPotwierdz'])->name('import.dane.potwierdz');
-    Route::post('/import/dane/zastap', [ImportController::class, 'importDanychZastap'])->name('import.dane.zastap');
-    Route::get('/import/dane/zastap-anuluj', [ImportController::class, 'anulujImportZastap'])->name('import.dane.zastap-anuluj');
     Route::delete('/import/{import}', [ImportController::class, 'destroy'])->name('import.destroy');
 
     Route::post('kartoteki/plan-kont/destroy-all', [PlanKontController::class, 'destroyAll'])
@@ -55,4 +65,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/ustawienia/plan-roczny', [PlanRocznyController::class, 'edit'])->name('plan-roczny.edit');
     Route::put('/ustawienia/plan-roczny', [PlanRocznyController::class, 'update'])->name('plan-roczny.update');
+
+    Route::get('/ustawienia/wip-okno', [WipOknoController::class, 'edit'])->name('wip-okno.edit');
+    Route::post('/ustawienia/wip-okno/wyslij', [WipOknoController::class, 'send'])->name('wip-okno.send');
 });

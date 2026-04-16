@@ -152,9 +152,10 @@
                     <a href="{{ route('wip.index') }}" class="{{ request()->routeIs('wip.*') ? 'active' : '' }}">WIP</a>
                     <a href="{{ route('raport-pl.index') }}" class="{{ request()->routeIs('raport-pl.*') ? 'active' : '' }}">Raport P&L</a>
                     <div class="navbar-dropdown">
-                        <span class="dropdown-toggle {{ request()->routeIs('plan-roczny.*') || request()->routeIs('import-plan-kont.*') || request()->routeIs('users.*') ? 'active' : '' }}">Ustawienia</span>
+                        <span class="dropdown-toggle {{ request()->routeIs('plan-roczny.*') || request()->routeIs('import-plan-kont.*') || request()->routeIs('users.*') || request()->routeIs('wip-okno.*') ? 'active' : '' }}">Ustawienia</span>
                         <div class="dropdown-menu">
                             <a href="{{ route('plan-roczny.edit') }}" class="{{ request()->routeIs('plan-roczny.*') ? 'active' : '' }}">Plan roczny</a>
+                            <a href="{{ route('wip-okno.edit') }}" class="{{ request()->routeIs('wip-okno.*') ? 'active' : '' }}">Okno WIP</a>
                             <a href="{{ route('import-plan-kont.index') }}" class="{{ request()->routeIs('import-plan-kont.*') ? 'active' : '' }}">Import planu kont</a>
                             @if(strtoupper(trim(auth()->user()->typ ?? '')) === 'ADM')
                             <a href="{{ route('users.index') }}" class="{{ request()->routeIs('users.*') ? 'active' : '' }}">Użytkownicy</a>

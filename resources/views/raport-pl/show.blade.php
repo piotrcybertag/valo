@@ -17,7 +17,6 @@
                 @endforeach
             </select>
         </div>
-        <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Import: okres {{ $import->okres_nazwa ?? '—' }}, zaimportowano {{ $import->created_at->format('Y-m-d H:i') }}. % plan bieżący = narastająco/(plan × {{ $miesiac ?? 12 }}/12). Kolumny miesięczne = różnica vs poprzedni miesiąc.</p>
         <div class="table-wrap overflow-x-auto w-full max-w-none mb-8">
             <table class="data-table raport-pl-table">
                 <thead>
@@ -26,9 +25,8 @@
                         <th class="text-right">Plan</th>
                         <th class="text-right">% plan bieżący</th>
                         <th class="text-right">Narastająco</th>
-                        @for($m = ($miesiac ?? 12); $m >= 1; $m--)
-                        <th class="text-right">{{ ['Styczeń','Luty','Marzec','Kwiecień','Maj','Czerwiec','Lipiec','Sierpień','Wrzesień','Październik','Listopad','Grudzień'][$m-1] }}</th>
-                        @endfor
+                        <th class="text-right">Bieżący<br><span class="text-xs font-normal opacity-80">{{ $import->okres_nazwa ?? '—' }}</span></th>
+                        <th class="text-right">Poprzednie okresy</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -36,7 +34,6 @@
                     @if($w['typ'] === 'podsumowanie_sales')
                     @php
                         $plan = $w['plan'] ?? null;
-                        $pctTotal = ($plan !== null && $plan != 0) ? ($w['narastajaco'] / $plan) * 100 : null;
                         $pctBiezacy = ($plan !== null && $plan != 0 && ($miesiac ?? 12) > 0) ? ($w['narastajaco'] / ($plan * ($miesiac ?? 12) / 12)) * 100 : null;
                     @endphp
                     <tr class="raport-pl-naglowek-grupy">
@@ -44,21 +41,12 @@
                         <td class="text-right">{{ isset($w['plan']) && $w['plan'] !== null ? number_format($w['plan'], 2, ',', ' ') : '—' }}</td>
                         <td class="text-right">{{ $pctBiezacy !== null ? number_format($pctBiezacy, 1, ',', ' ') . '%' : '—' }}</td>
                         <td class="text-right"><strong>{{ number_format($w['narastajaco'], 2, ',', ' ') }}</strong></td>
-                        @for($m = ($miesiac ?? 12); $m >= 1; $m--)
-                        <td class="text-right">
-                            @php $val = $w['wartosci_miesieczne'][$m] ?? null; @endphp
-                            @if($val !== null)
-                                @if($m === ($miesiac ?? 0))<strong>@endif{{ number_format($val, 2, ',', ' ') }}@if($m === ($miesiac ?? 0))</strong>@endif
-                            @else
-                                —
-                            @endif
-                        </td>
-                        @endfor
+                        <td class="text-right"><strong>{{ number_format($w['biezacy'], 2, ',', ' ') }}</strong></td>
+                        <td class="text-right"><strong>{{ number_format($w['poprzednie_okresy'], 2, ',', ' ') }}</strong></td>
                     </tr>
                     @elseif($w['typ'] === 'podsumowanie_oper_result')
                     @php
                         $plan = $w['plan'] ?? null;
-                        $pctTotal = ($plan !== null && $plan != 0) ? ($w['narastajaco'] / $plan) * 100 : null;
                         $pctBiezacy = ($plan !== null && $plan != 0 && ($miesiac ?? 12) > 0) ? ($w['narastajaco'] / ($plan * ($miesiac ?? 12) / 12)) * 100 : null;
                     @endphp
                     <tr class="raport-pl-naglowek-grupy">
@@ -66,21 +54,12 @@
                         <td class="text-right">{{ isset($w['plan']) && $w['plan'] !== null ? number_format($w['plan'], 2, ',', ' ') : '—' }}</td>
                         <td class="text-right">{{ $pctBiezacy !== null ? number_format($pctBiezacy, 1, ',', ' ') . '%' : '—' }}</td>
                         <td class="text-right"><strong>{{ number_format($w['narastajaco'], 2, ',', ' ') }}</strong></td>
-                        @for($m = ($miesiac ?? 12); $m >= 1; $m--)
-                        <td class="text-right">
-                            @php $val = $w['wartosci_miesieczne'][$m] ?? null; @endphp
-                            @if($val !== null)
-                                @if($m === ($miesiac ?? 0))<strong>@endif{{ number_format($val, 2, ',', ' ') }}@if($m === ($miesiac ?? 0))</strong>@endif
-                            @else
-                                —
-                            @endif
-                        </td>
-                        @endfor
+                        <td class="text-right"><strong>{{ number_format($w['biezacy'], 2, ',', ' ') }}</strong></td>
+                        <td class="text-right"><strong>{{ number_format($w['poprzednie_okresy'], 2, ',', ' ') }}</strong></td>
                     </tr>
                     @elseif($w['typ'] === 'naglowek_grupy')
                     @php
                         $plan = $w['oper_result_plan'] ?? null;
-                        $pctTotal = ($plan !== null && $plan != 0) ? (($w['oper_result_narastajaco'] ?? 0) / $plan) * 100 : null;
                         $pctBiezacy = ($plan !== null && $plan != 0 && ($miesiac ?? 12) > 0) ? (($w['oper_result_narastajaco'] ?? 0) / ($plan * ($miesiac ?? 12) / 12)) * 100 : null;
                     @endphp
                     <tr class="raport-pl-naglowek-grupy">
@@ -98,16 +77,8 @@
                         <td class="text-right">@if(isset($w['oper_result_plan']) && $w['oper_result_plan'] !== null){{ number_format($w['oper_result_plan'], 2, ',', ' ') }}@else—@endif</td>
                         <td class="text-right">@if($pctBiezacy !== null){{ number_format($pctBiezacy, 1, ',', ' ') }}%@else—@endif</td>
                         <td class="text-right">@if(isset($w['oper_result_narastajaco']))<strong>{{ number_format($w['oper_result_narastajaco'], 2, ',', ' ') }}</strong>@else—@endif</td>
-                        @for($m = ($miesiac ?? 12); $m >= 1; $m--)
-                        <td class="text-right">
-                            @php $val = $w['wartosci_miesieczne'][$m] ?? null; @endphp
-                            @if($val !== null)
-                                @if($m === ($miesiac ?? 0))<strong>@endif{{ number_format($val, 2, ',', ' ') }}@if($m === ($miesiac ?? 0))</strong>@endif
-                            @else
-                                —
-                            @endif
-                        </td>
-                        @endfor
+                        <td class="text-right">@if(isset($w['oper_result_biezacy']))<strong>{{ number_format($w['oper_result_biezacy'], 2, ',', ' ') }}</strong>@else—@endif</td>
+                        <td class="text-right">@if(isset($w['oper_result_poprzednie_okresy']))<strong>{{ number_format($w['oper_result_poprzednie_okresy'], 2, ',', ' ') }}</strong>@else—@endif</td>
                     </tr>
                     @else
                     @include('raport-pl._wiersz', ['w' => $w, 'loop' => $loop, 'miesiac' => $miesiac ?? 12])
