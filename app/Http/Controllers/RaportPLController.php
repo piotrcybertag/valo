@@ -494,11 +494,11 @@ class RaportPLController extends Controller
         ];
 
         // Niezadekretowane z importu — jak WIP: ta sama kwota w „bieżący” i „narastająco” (brak rozłożenia na wcześniejsze miesiące w jednym imporcie).
-        // Income Adjusted YTD nadal bez odejmowania ND w YTD (jak dotychczas), żeby nie dublować korekty.
+        // Income Adjusted: w obu kolumnach zawsze Income + WIP − ND (nie „narastająco z narastającego” itd. — WIP i ND są wspólne, Income jest bieżące vs YTD).
         $niezadekretowane = (float) ($import->niezadekretowane ?? 0);
 
         $incomeAdjustedBiezacy = $incomeBiezacy + $wipMiesiacaRaportu - $niezadekretowane;
-        $incomeAdjustedNarastajaco = $incomeNarastajaco + $wipMiesiacaRaportu;
+        $incomeAdjustedNarastajaco = $incomeNarastajaco + $wipMiesiacaRaportu - $niezadekretowane;
 
         $wiersze[] = [
             'typ' => 'wiersz',
